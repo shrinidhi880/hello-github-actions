@@ -1,1 +1,37 @@
+name: Deploy to EC2
 
+on:
+  push:
+    branches:
+      - main  # Runs when code is pushed to main branch
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v3
+
+      - name: Login to Docker Hub
+        run: echo "${{ secrets.DOCKERHUB_PASSWORD }}" | docker login -u "${{ secrets.DOCKERHUB_USERNAME }}" --password-stdin
+
+      - name: Build and Push Docker Image
+        run: |
+          docker build -t your-dockerhub-username/your-app:latest .
+          docker push your-dockerhub-username/your-app:latest
+
+      - name: Deploy to EC2
+        env:
+          PRIVATE_KEY: ${{ secrets.EC2_SSH_PRIVATE_KEY }}
+          HOST: ${{ secrets.EC2_HOST }}
+          USER: ${{ secrets.EC2_USER }}
+        run: |
+          echo "$PRIVATE_KEY" > private_key.pem
+          chmod 600 private_key.pem
+          ssh -o StrictHostKeyChecking=no -i private_key.pem $USER@$HOST << 'EOF'
+            docker pull your-dockerhub-username/your-app:latest
+            docker stop my_container || true
+            docker rm my_container || true
+            docker run -d --name my_container -p 80:80 your-dockerhub-username/your-app:latest
+          EOF
